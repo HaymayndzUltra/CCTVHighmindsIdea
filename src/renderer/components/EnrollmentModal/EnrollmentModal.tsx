@@ -156,9 +156,11 @@ function CaptureTab({
 }
 
 function FromEventTab({
+  selectedImageIds,
   onSelect,
   disabled,
 }: {
+  selectedImageIds: string[];
   onSelect: (img: ImagePreview) => void;
   disabled: boolean;
 }) {
@@ -241,17 +243,34 @@ function FromEventTab({
     <div className="grid grid-cols-4 gap-2">
       {snapshots.map((evt) => {
         const dataUrl = thumbnails[evt.id];
+        const imageId = `evt-${evt.id}`;
+        const isSelected = selectedImageIds.includes(imageId);
         return (
           <button
             key={evt.id}
             onClick={() => dataUrl && !disabled && handleSelect(evt, dataUrl)}
             disabled={!dataUrl || disabled}
             title={`${evt.personName} — ${new Date(evt.createdAt).toLocaleString()}`}
-            className="group relative aspect-square overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800 transition-all hover:border-primary-500 disabled:cursor-wait disabled:opacity-50"
+            className={`group relative aspect-square overflow-hidden rounded-lg border bg-neutral-800 transition-all disabled:cursor-wait disabled:opacity-50 ${
+              isSelected
+                ? 'border-primary-500 ring-2 ring-primary-500/70'
+                : 'border-neutral-700 hover:border-primary-500'
+            }`}
           >
             {dataUrl ? (
               <>
                 <img src={dataUrl} alt={evt.personName} className="h-full w-full object-cover" />
+                <div className="absolute left-1.5 top-1.5">
+                  <div
+                    className={`flex h-4 w-4 items-center justify-center rounded border text-[10px] font-semibold ${
+                      isSelected
+                        ? 'border-primary-300 bg-primary-500 text-white'
+                        : 'border-white/70 bg-black/40 text-transparent'
+                    }`}
+                  >
+                    ✓
+                  </div>
+                </div>
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <p className="truncate text-[10px] font-medium text-white">{evt.personName}</p>
                 </div>
@@ -353,6 +372,17 @@ export default function EnrollmentModal({
 
   const removeImage = useCallback((id: string) => {
     setImages((prev) => prev.filter((img) => img.id !== id));
+  }, []);
+
+  const toggleImage = useCallback((image: ImagePreview) => {
+    setImages((prev) => {
+      const exists = prev.some((img) => img.id === image.id);
+      return exists ? prev.filter((img) => img.id !== image.id) : [...prev, image];
+    });
+  }, []);
+
+  const clearSelectedImages = useCallback(() => {
+    setImages([]);
   }, []);
 
   const handleSubmit = async () => {
@@ -520,7 +550,8 @@ export default function EnrollmentModal({
 
           {activeTab === 'event' && (
             <FromEventTab
-              onSelect={(img) => setImages((prev) => [...prev, img])}
+              selectedImageIds={images.map((img) => img.id)}
+              onSelect={toggleImage}
               disabled={isSubmitting}
             />
           )}
@@ -531,6 +562,16 @@ export default function EnrollmentModal({
               <p className="mb-2 text-xs font-medium text-neutral-400">
                 Selected Images ({images.length})
               </p>
+              <div className="mb-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={clearSelectedImages}
+                  disabled={images.length === 0 || isSubmitting}
+                  className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                >
+                  Deselect All
+                </button>
+              </div>
               <div className="grid grid-cols-4 gap-2">
                 {images.map((img) => (
                   <div
