@@ -188,6 +188,8 @@ const electronAPI = {
   // Events
   events: {
     list: (filters: Record<string, unknown>) => ipcRenderer.invoke('event:list', { filters }),
+    snapshotBase64: (snapshotPath: string) =>
+      ipcRenderer.invoke('event:snapshot-base64', { snapshotPath }) as Promise<string | null>,
     onNew: (callback: (data: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
       ipcRenderer.on('event:new', listener);

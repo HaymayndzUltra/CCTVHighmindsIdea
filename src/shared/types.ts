@@ -403,6 +403,7 @@ export interface ElectronAPI {
   };
   events: {
     list: (filters: EventFilters) => Promise<DetectionEvent[]>;
+    snapshotBase64: (snapshotPath: string) => Promise<string | null>;
     onNew: (callback: (data: DetectionEvent) => void) => () => void;
   };
   person: {

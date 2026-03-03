@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, Camera, Image, X, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload, Camera, Image, X, Loader2, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { useWebRTCStream } from '../../hooks/useWebRTCStream';
 
 type TabId = 'upload' | 'capture' | 'event';
 
@@ -21,11 +22,251 @@ interface ImagePreview {
   name: string;
 }
 
+interface CameraOption {
+  id: string;
+  label: string;
+}
+
+interface EventSnapshot {
+  id: string;
+  personName: string;
+  snapshotPath: string;
+  createdAt: string;
+  confidence: number;
+}
+
 const TABS: { id: TabId; label: string; icon: typeof Upload }[] = [
   { id: 'upload', label: 'Upload', icon: Upload },
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'event', label: 'From Event', icon: Image },
 ];
+
+function CaptureTab({
+  cameras,
+  onCapture,
+  disabled,
+}: {
+  cameras: CameraOption[];
+  onCapture: (img: ImagePreview) => void;
+  disabled: boolean;
+}) {
+  const [selectedCameraId, setSelectedCameraId] = useState(cameras[0]?.id ?? '');
+  const { videoRef, connectionStatus, retry } = useWebRTCStream(selectedCameraId);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const handleCapture = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, width, height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const base64 = dataUrl.split(',')[1];
+    if (base64) {
+      onCapture({
+        id: `cap-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        dataUrl,
+        base64,
+        name: `capture-${Date.now()}.jpg`,
+      });
+    }
+  }, [videoRef, onCapture]);
+
+  if (cameras.length === 0) {
+    return (
+      <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800/30 p-4">
+        <Camera size={28} className="text-neutral-500" />
+        <p className="text-sm text-neutral-400">No cameras configured</p>
+      </div>
+    );
+  }
+
+  const isConnected = connectionStatus === 'connected';
+  const isFailed = connectionStatus === 'failed' || connectionStatus === 'fallback';
+
+  return (
+    <div className="flex flex-col gap-3">
+      <select
+        value={selectedCameraId}
+        onChange={(e) => setSelectedCameraId(e.target.value)}
+        disabled={disabled}
+        className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+      >
+        {cameras.map((cam) => (
+          <option key={cam.id} value={cam.id}>
+            {cam.label || cam.id}
+          </option>
+        ))}
+      </select>
+
+      <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-neutral-700 bg-black">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`h-full w-full object-cover ${isConnected ? 'block' : 'hidden'}`}
+        />
+        {!isConnected && (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-neutral-500">
+            {isFailed ? (
+              <>
+                <Camera size={24} className="text-neutral-600" />
+                <p className="text-xs text-neutral-500">Stream unavailable</p>
+                <button
+                  onClick={retry}
+                  className="flex items-center gap-1.5 rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800"
+                >
+                  <RefreshCw size={12} /> Retry
+                </button>
+              </>
+            ) : (
+              <>
+                <Loader2 size={22} className="animate-spin" />
+                <p className="text-xs">Connecting to stream...</p>
+              </>
+            )}
+          </div>
+        )}
+        {isConnected && (
+          <div className="absolute left-2 top-2 flex items-center gap-1.5 rounded bg-black/60 px-2 py-0.5 text-[10px] text-emerald-400 backdrop-blur-sm">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+            Live
+          </div>
+        )}
+      </div>
+
+      <canvas ref={canvasRef} className="hidden" />
+
+      <button
+        onClick={handleCapture}
+        disabled={!isConnected || disabled}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2.5 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Camera size={14} />
+        Capture Face
+      </button>
+    </div>
+  );
+}
+
+function FromEventTab({
+  onSelect,
+  disabled,
+}: {
+  onSelect: (img: ImagePreview) => void;
+  disabled: boolean;
+}) {
+  const [snapshots, setSnapshots] = useState<EventSnapshot[]>([]);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      setIsLoading(true);
+      try {
+        const result = await window.electronAPI.events.list({
+          limit: 30,
+          offset: 0,
+        });
+        const eventsArr = result as Array<{
+          id: string;
+          personName: string;
+          snapshotPath: string | null;
+          createdAt: string;
+          confidence: number;
+        }>;
+        const withSnapshots = eventsArr.filter((e) => e.snapshotPath) as EventSnapshot[];
+        if (isMounted) setSnapshots(withSnapshots);
+
+        for (const evt of withSnapshots) {
+          if (!isMounted) break;
+          try {
+            const b64 = await window.electronAPI.events.snapshotBase64(evt.snapshotPath);
+            if (b64 && isMounted) {
+              setThumbnails((prev) => ({ ...prev, [evt.id]: `data:image/jpeg;base64,${b64}` }));
+            }
+          } catch { /* ignore */ }
+        }
+      } catch (err) {
+        console.error('[FromEventTab] Failed to load events:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleSelect = useCallback(
+    (evt: EventSnapshot, dataUrl: string) => {
+      const base64 = dataUrl.split(',')[1];
+      if (!base64) return;
+      onSelect({
+        id: `evt-${evt.id}`,
+        dataUrl,
+        base64,
+        name: `event-${evt.id.slice(0, 8)}.jpg`,
+      });
+    },
+    [onSelect]
+  );
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[160px] items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800/30">
+        <Loader2 size={18} className="animate-spin text-neutral-500" />
+        <span className="text-sm text-neutral-500">Loading recent detections...</span>
+      </div>
+    );
+  }
+
+  if (snapshots.length === 0) {
+    return (
+      <div className="flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800/30">
+        <Image size={28} className="text-neutral-500" />
+        <p className="text-sm text-neutral-400">No detection snapshots available yet</p>
+        <p className="text-xs text-neutral-600">Snapshots appear after face detections are recorded</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {snapshots.map((evt) => {
+        const dataUrl = thumbnails[evt.id];
+        return (
+          <button
+            key={evt.id}
+            onClick={() => dataUrl && !disabled && handleSelect(evt, dataUrl)}
+            disabled={!dataUrl || disabled}
+            title={`${evt.personName} — ${new Date(evt.createdAt).toLocaleString()}`}
+            className="group relative aspect-square overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800 transition-all hover:border-primary-500 disabled:cursor-wait disabled:opacity-50"
+          >
+            {dataUrl ? (
+              <>
+                <img src={dataUrl} alt={evt.personName} className="h-full w-full object-cover" />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <p className="truncate text-[10px] font-medium text-white">{evt.personName}</p>
+                </div>
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <Loader2 size={14} className="animate-spin text-neutral-600" />
+              </div>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function EnrollmentModal({
   isOpen,
@@ -37,6 +278,7 @@ export default function EnrollmentModal({
   const [label, setLabel] = useState('');
   const [images, setImages] = useState<ImagePreview[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cameras, setCameras] = useState<CameraOption[]>([]);
   const [result, setResult] = useState<{
     success: boolean;
     embeddingsCount: number;
@@ -55,6 +297,9 @@ export default function EnrollmentModal({
       setActiveTab('upload');
       setIsSubmitting(false);
       setTimeout(() => nameInputRef.current?.focus(), 100);
+      window.electronAPI.camera.list()
+        .then((cams) => setCameras(cams.map((c) => ({ id: c.id, label: c.label }))))
+        .catch(() => setCameras([]));
     }
   }, [isOpen]);
 
@@ -266,33 +511,18 @@ export default function EnrollmentModal({
           )}
 
           {activeTab === 'capture' && (
-            <div className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-neutral-700 bg-neutral-800/30 px-4 py-6">
-              <Camera size={28} className="mb-2 text-neutral-500" />
-              <p className="text-sm text-neutral-400">
-                Live camera capture
-              </p>
-              <p className="mt-1 text-xs text-neutral-600">
-                Select a camera and click "Capture Face" to freeze a frame.
-              </p>
-              <p className="mt-3 text-xs text-neutral-500 italic">
-                Camera stream preview will appear here when streams are active.
-              </p>
-            </div>
+            <CaptureTab
+              cameras={cameras}
+              onCapture={(img) => setImages((prev) => [...prev, img])}
+              disabled={isSubmitting}
+            />
           )}
 
           {activeTab === 'event' && (
-            <div className="flex min-h-[120px] flex-col items-center justify-center rounded-lg border border-neutral-700 bg-neutral-800/30 px-4 py-6">
-              <Image size={28} className="mb-2 text-neutral-500" />
-              <p className="text-sm text-neutral-400">
-                Select from recent detections
-              </p>
-              <p className="mt-1 text-xs text-neutral-600">
-                Click a detected face snapshot to use it for enrollment.
-              </p>
-              <p className="mt-3 text-xs text-neutral-500 italic">
-                Recent detection events will appear here when available.
-              </p>
-            </div>
+            <FromEventTab
+              onSelect={(img) => setImages((prev) => [...prev, img])}
+              disabled={isSubmitting}
+            />
           )}
 
           {/* Image Preview Grid */}

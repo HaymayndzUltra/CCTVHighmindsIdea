@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron';
+import fs from 'node:fs';
 import { getEvents } from '../services/DatabaseService';
 import type { EventFilters } from '../../shared/types';
 
@@ -58,6 +59,16 @@ export function registerEventHandlers(): void {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[IPC][event:list] Error querying events: ${message}`);
       throw new Error(`Failed to list events: ${message}`, { cause: error });
+    }
+  });
+
+  ipcMain.handle('event:snapshot-base64', (_event, payload: { snapshotPath: string }) => {
+    if (!payload?.snapshotPath) return null;
+    try {
+      if (!fs.existsSync(payload.snapshotPath)) return null;
+      return fs.readFileSync(payload.snapshotPath).toString('base64');
+    } catch {
+      return null;
     }
   });
 
