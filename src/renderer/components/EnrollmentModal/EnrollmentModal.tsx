@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, Camera, Image, X, Loader2, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Upload, Camera, Image, X, Loader2, AlertCircle, CheckCircle, RefreshCw, Check } from 'lucide-react';
 import { useWebRTCStream } from '../../hooks/useWebRTCStream';
 
 type TabId = 'upload' | 'capture' | 'event';
@@ -156,11 +156,13 @@ function CaptureTab({
 }
 
 function FromEventTab({
-  onSelect,
   disabled,
+  selectedImageIds,
+  onToggleEventImage,
 }: {
-  onSelect: (img: ImagePreview) => void;
   disabled: boolean;
+  selectedImageIds: Set<string>;
+  onToggleEventImage: (img: ImagePreview) => void;
 }) {
   const [snapshots, setSnapshots] = useState<EventSnapshot[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
@@ -192,7 +194,9 @@ function FromEventTab({
             if (b64 && isMounted) {
               setThumbnails((prev) => ({ ...prev, [evt.id]: `data:image/jpeg;base64,${b64}` }));
             }
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
       } catch (err) {
         console.error('[FromEventTab] Failed to load events:', err);
@@ -201,22 +205,10 @@ function FromEventTab({
       }
     }
     load();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, []);
-
-  const handleSelect = useCallback(
-    (evt: EventSnapshot, dataUrl: string) => {
-      const base64 = dataUrl.split(',')[1];
-      if (!base64) return;
-      onSelect({
-        id: `evt-${evt.id}`,
-        dataUrl,
-        base64,
-        name: `event-${evt.id.slice(0, 8)}.jpg`,
-      });
-    },
-    [onSelect]
-  );
 
   if (isLoading) {
     return (
@@ -241,18 +233,39 @@ function FromEventTab({
     <div className="grid grid-cols-4 gap-2">
       {snapshots.map((evt) => {
         const dataUrl = thumbnails[evt.id];
+        const imgId = `evt-${evt.id}`;
+        const isSelected = selectedImageIds.has(imgId);
         return (
           <button
             key={evt.id}
-            onClick={() => dataUrl && !disabled && handleSelect(evt, dataUrl)}
+            onClick={() => {
+              if (!dataUrl || disabled) return;
+              const base64 = dataUrl.split(',')[1];
+              if (!base64) return;
+              onToggleEventImage({
+                id: imgId,
+                dataUrl,
+                base64,
+                name: `event-${evt.id.slice(0, 8)}.jpg`,
+              });
+            }}
             disabled={!dataUrl || disabled}
             title={`${evt.personName} — ${new Date(evt.createdAt).toLocaleString()}`}
-            className="group relative aspect-square overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800 transition-all hover:border-primary-500 disabled:cursor-wait disabled:opacity-50"
+            className={`group relative aspect-square overflow-hidden rounded-lg border bg-neutral-800 transition-all disabled:cursor-wait disabled:opacity-50 ${
+              isSelected ? 'border-primary-500 ring-2 ring-primary-500/40' : 'border-neutral-700 hover:border-primary-500'
+            }`}
           >
             {dataUrl ? (
               <>
                 <img src={dataUrl} alt={evt.personName} className="h-full w-full object-cover" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div
+                  className={`absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded border ${
+                    isSelected ? 'border-primary-400 bg-primary-500 text-white' : 'border-white/70 bg-black/40 text-transparent'
+                  }`}
+                >
+                  <Check size={12} />
+                </div>
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1">
                   <p className="truncate text-[10px] font-medium text-white">{evt.personName}</p>
                 </div>
               </>
@@ -268,15 +281,12 @@ function FromEventTab({
   );
 }
 
-export default function EnrollmentModal({
-  isOpen,
-  onClose,
-  onEnroll,
-}: EnrollmentModalProps) {
+export default function EnrollmentModal({ isOpen, onClose, onEnroll }: EnrollmentModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>('upload');
   const [personName, setPersonName] = useState('');
   const [label, setLabel] = useState('');
   const [images, setImages] = useState<ImagePreview[]>([]);
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cameras, setCameras] = useState<CameraOption[]>([]);
   const [result, setResult] = useState<{
@@ -293,11 +303,13 @@ export default function EnrollmentModal({
       setPersonName('');
       setLabel('');
       setImages([]);
+      setSelectedImageIds(new Set());
       setResult(null);
       setActiveTab('upload');
       setIsSubmitting(false);
       setTimeout(() => nameInputRef.current?.focus(), 100);
-      window.electronAPI.camera.list()
+      window.electronAPI.camera
+        .list()
         .then((cams) => setCameras(cams.map((c) => ({ id: c.id, label: c.label }))))
         .catch(() => setCameras([]));
     }
@@ -313,31 +325,48 @@ export default function EnrollmentModal({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isSubmitting, onClose]);
 
-  const handleFilesSelected = useCallback((files: FileList | null) => {
-    if (!files) return;
-
-    Array.from(files).forEach((file) => {
-      if (!file.type.startsWith('image/')) return;
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        const base64 = dataUrl.split(',')[1];
-        if (base64) {
-          setImages((prev) => [
-            ...prev,
-            {
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              dataUrl,
-              base64,
-              name: file.name,
-            },
-          ]);
-        }
-      };
-      reader.readAsDataURL(file);
+  const addImage = useCallback((img: ImagePreview, autoSelect = true) => {
+    setImages((prev) => {
+      const exists = prev.some((existing) => existing.id === img.id);
+      return exists ? prev : [...prev, img];
     });
+    if (autoSelect) {
+      setSelectedImageIds((prev) => {
+        const next = new Set(prev);
+        next.add(img.id);
+        return next;
+      });
+    }
   }, []);
+
+  const handleFilesSelected = useCallback(
+    (files: FileList | null) => {
+      if (!files) return;
+
+      Array.from(files).forEach((file) => {
+        if (!file.type.startsWith('image/')) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const dataUrl = e.target?.result as string;
+          const base64 = dataUrl.split(',')[1];
+          if (base64) {
+            addImage(
+              {
+                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                dataUrl,
+                base64,
+                name: file.name,
+              },
+              true
+            );
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    },
+    [addImage]
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -353,19 +382,37 @@ export default function EnrollmentModal({
 
   const removeImage = useCallback((id: string) => {
     setImages((prev) => prev.filter((img) => img.id !== id));
+    setSelectedImageIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const toggleImageSelection = useCallback((id: string) => {
+    setSelectedImageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }, []);
 
   const handleSubmit = async () => {
-    if (!personName.trim() || images.length === 0) return;
+    if (!personName.trim() || selectedImageIds.size === 0) return;
 
     setIsSubmitting(true);
     setResult(null);
 
     try {
+      const selectedImages = images.filter((img) => selectedImageIds.has(img.id));
       const enrollResult = await onEnroll({
         personName: personName.trim(),
         label: label.trim() || undefined,
-        imageData: images.map((img) => img.base64),
+        imageData: selectedImages.map((img) => img.base64),
         source: activeTab,
       });
 
@@ -389,7 +436,7 @@ export default function EnrollmentModal({
 
   if (!isOpen) return null;
 
-  const isFormValid = personName.trim().length > 0 && images.length > 0;
+  const isFormValid = personName.trim().length > 0 && selectedImageIds.size > 0;
 
   return (
     <div
@@ -403,7 +450,6 @@ export default function EnrollmentModal({
         className="mx-4 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-800 px-6 py-4">
           <h2 id="enrollment-title" className="text-lg font-semibold text-neutral-100">
             Enroll New Person
@@ -418,15 +464,10 @@ export default function EnrollmentModal({
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Name & Label */}
           <div className="mb-5 grid grid-cols-2 gap-4">
             <div>
-              <label
-                htmlFor="person-name"
-                className="mb-1.5 block text-xs font-medium text-neutral-400"
-              >
+              <label htmlFor="person-name" className="mb-1.5 block text-xs font-medium text-neutral-400">
                 Name <span className="text-red-400">*</span>
               </label>
               <input
@@ -441,10 +482,7 @@ export default function EnrollmentModal({
               />
             </div>
             <div>
-              <label
-                htmlFor="person-label"
-                className="mb-1.5 block text-xs font-medium text-neutral-400"
-              >
+              <label htmlFor="person-label" className="mb-1.5 block text-xs font-medium text-neutral-400">
                 Label
               </label>
               <input
@@ -459,17 +497,14 @@ export default function EnrollmentModal({
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="mb-4 flex gap-1 rounded-lg bg-neutral-800 p-1">
+          <div className="mb-4 grid grid-cols-3 gap-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-1">
             {TABS.map(({ id, label: tabLabel, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
                 disabled={isSubmitting}
                 className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
-                  activeTab === id
-                    ? 'bg-neutral-700 text-neutral-100'
-                    : 'text-neutral-400 hover:text-neutral-200'
+                  activeTab === id ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200'
                 }`}
               >
                 <Icon size={14} />
@@ -478,7 +513,6 @@ export default function EnrollmentModal({
             ))}
           </div>
 
-          {/* Tab Content */}
           {activeTab === 'upload' && (
             <div
               className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-700 bg-neutral-800/30 px-4 py-6 transition-colors hover:border-primary-600 hover:bg-neutral-800/50"
@@ -511,70 +545,95 @@ export default function EnrollmentModal({
           )}
 
           {activeTab === 'capture' && (
-            <CaptureTab
-              cameras={cameras}
-              onCapture={(img) => setImages((prev) => [...prev, img])}
-              disabled={isSubmitting}
-            />
+            <CaptureTab cameras={cameras} onCapture={(img) => addImage(img, true)} disabled={isSubmitting} />
           )}
 
           {activeTab === 'event' && (
             <FromEventTab
-              onSelect={(img) => setImages((prev) => [...prev, img])}
               disabled={isSubmitting}
+              selectedImageIds={selectedImageIds}
+              onToggleEventImage={(img) => {
+                const exists = images.some((existing) => existing.id === img.id);
+                if (!exists) {
+                  addImage(img, true);
+                  return;
+                }
+                toggleImageSelection(img.id);
+              }}
             />
           )}
 
-          {/* Image Preview Grid */}
           {images.length > 0 && (
             <div className="mt-4">
-              <p className="mb-2 text-xs font-medium text-neutral-400">
-                Selected Images ({images.length})
-              </p>
-              <div className="grid grid-cols-4 gap-2">
-                {images.map((img) => (
-                  <div
-                    key={img.id}
-                    className="group relative aspect-square overflow-hidden rounded-lg border border-neutral-700"
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium text-neutral-400">Selected Images ({selectedImageIds.size})</p>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedImageIds(new Set(images.map((img) => img.id)))}
+                    className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800"
                   >
-                    <img
-                      src={img.dataUrl}
-                      alt={img.name}
-                      className="h-full w-full object-cover"
-                    />
-                    <button
-                      onClick={() => removeImage(img.id)}
-                      disabled={isSubmitting}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80 hover:text-white"
-                      aria-label={`Remove ${img.name}`}
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedImageIds(new Set())}
+                    className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {images.map((img) => {
+                  const isSelected = selectedImageIds.has(img.id);
+                  return (
+                    <div
+                      key={img.id}
+                      className={`group relative aspect-square overflow-hidden rounded-lg border transition-all ${
+                        isSelected ? 'border-primary-500 ring-2 ring-primary-500/40' : 'border-neutral-700 opacity-70'
+                      }`}
                     >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        type="button"
+                        onClick={() => toggleImageSelection(img.id)}
+                        className="absolute inset-0 z-10"
+                        aria-label={`${isSelected ? 'Unselect' : 'Select'} ${img.name}`}
+                      />
+                      <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
+                      <div
+                        className={`absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded border ${
+                          isSelected ? 'border-primary-400 bg-primary-500 text-white' : 'border-white/70 bg-black/40 text-transparent'
+                        }`}
+                      >
+                        <Check size={12} />
+                      </div>
+                      <button
+                        onClick={() => removeImage(img.id)}
+                        disabled={isSubmitting}
+                        className="absolute right-1 top-1 z-20 rounded-full bg-black/60 p-1 text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80 hover:text-white"
+                        aria-label={`Remove ${img.name}`}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Result Message */}
           {result && (
             <div
               className={`mt-4 flex items-start gap-2 rounded-lg px-4 py-3 text-sm ${
-                result.success
-                  ? 'border border-green-800/50 bg-green-900/20 text-green-300'
-                  : 'border border-red-800/50 bg-red-900/20 text-red-300'
+                result.success ? 'border border-green-800/50 bg-green-900/20 text-green-300' : 'border border-red-800/50 bg-red-900/20 text-red-300'
               }`}
             >
-              {result.success ? (
-                <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
-              ) : (
-                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-              )}
+              {result.success ? <CheckCircle size={16} className="mt-0.5 flex-shrink-0" /> : <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />}
               <div>
                 {result.success ? (
                   <p>
-                    Enrolled successfully with {result.embeddingsCount} face
-                    embedding{result.embeddingsCount !== 1 ? 's' : ''}.
+                    Enrolled successfully with {result.embeddingsCount} face embedding{result.embeddingsCount !== 1 ? 's' : ''}.
                   </p>
                 ) : (
                   <div>
@@ -591,7 +650,6 @@ export default function EnrollmentModal({
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex justify-end gap-3 border-t border-neutral-800 px-6 py-4">
           <button
             onClick={onClose}
