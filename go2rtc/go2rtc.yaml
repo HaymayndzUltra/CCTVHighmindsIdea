@@ -1,0 +1,29 @@
+streams:
+  cam1_main:
+    - "tapo://Magandaako03291993@192.168.100.213"
+  cam1_sub:
+    - "tapo://Magandaako03291993@192.168.100.213?channel=0&subtype=1"
+
+  cam2a_main:
+    - "rtsp://Rehj2026:Rehj2026@192.168.100.214:554/stream1"
+  cam2a_sub:
+    - "rtsp://Rehj2026:Rehj2026@192.168.100.214:554/stream2"
+
+  cam2b_main:
+    - "rtsp://Rehj2026:Rehj2026@192.168.100.214:554/stream6"
+  cam2b_sub:
+    - "rtsp://Rehj2026:Rehj2026@192.168.100.214:554/stream7"
+
+  cam3_main:
+    - "tapo://Magandaako03291993@192.168.100.228"
+  cam3_sub:
+    - "tapo://Magandaako03291993@192.168.100.228?channel=0&subtype=1"
+
+rtsp:
+  listen: ":8554"
+
+api:
+  listen: ":1984"
+
+log:
+  level: info

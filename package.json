@@ -1,0 +1,107 @@
+{
+  "name": "tapo-cctv-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PC desktop application for TP-Link Tapo CCTV monitoring with face recognition and entry/exit intelligence",
+  "main": "dist/main/main/index.js",
+  "scripts": {
+    "dev": "concurrently -n main,renderer,python -c blue,green,yellow \"npm run dev:main\" \"npm run dev:renderer\" \"npm run start:python\"",
+    "dev:main": "cross-env NODE_ENV=development npx tsc -p tsconfig.main.json --watch",
+    "dev:renderer": "vite --config vite.config.ts",
+    "start:electron": "cross-env NODE_ENV=development electron dist/main/main/index.js",
+    "start:python": "cd python-sidecar && python -m uvicorn main:app --host 127.0.0.1 --port 8520 --reload",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json && npx shx mkdir -p dist/main/main/database/migrations && npx shx cp src/main/database/schema.sql dist/main/main/database/schema.sql && npx shx cp src/main/database/migrations/v2.0.sql dist/main/main/database/migrations/v2.0.sql",
+    "build:renderer": "vite build --config vite.config.ts",
+    "lint": "eslint src/",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "dist:win": "npm run build && electron-builder --win"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "lucide-react": "^0.576.0",
+    "node-telegram-bot-api": "^0.67.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.3.3",
+    "@types/node-telegram-bot-api": "^0.64.14",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/sharp": "^0.31.1",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "autoprefixer": "^10.4.27",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "electron": "^40.6.1",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "eslint": "^10.0.2",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "postcss": "^8.5.6",
+    "prettier": "^3.8.1",
+    "tailwindcss": "^4.2.1"
+  },
+  "build": {
+    "appId": "com.tapo-cctv.desktop",
+    "productName": "Tapo CCTV Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "python-sidecar",
+        "to": "python-sidecar",
+        "filter": [
+          "**/*",
+          "!venv/**",
+          "!__pycache__/**",
+          "!*.pyc"
+        ]
+      },
+      {
+        "from": "src/renderer/assets/icon.svg",
+        "to": "icon.svg"
+      },
+      {
+        "from": "go2rtc",
+        "to": "go2rtc",
+        "filter": [
+          "go2rtc.exe",
+          "go2rtc.yaml"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/renderer/assets/icon.svg"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "src/renderer/assets/icon.svg",
+      "uninstallerIcon": "src/renderer/assets/icon.svg"
+    },
+    "publish": null
+  }
+}

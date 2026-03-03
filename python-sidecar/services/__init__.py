@@ -1,0 +1,1 @@
+"""AI sidecar service modules."""

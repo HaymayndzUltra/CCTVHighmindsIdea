@@ -1,0 +1,22 @@
+fastapi>=0.109.0
+uvicorn>=0.27.0
+insightface>=0.7.3
+# onnxruntime-gpu pinned to 1.23.2 — compatible with CUDA 12.x (driver 550+) and cuDNN 9.x
+# DO NOT upgrade without verifying CUDA/cuDNN compatibility:
+#   CUDA 12.x → onnxruntime-gpu 1.19+
+#   cuDNN 9.x  → onnxruntime-gpu 1.20+
+#   Validated on RTX 4090, driver 591.74, CUDA 12.8
+# The prior >=1.17.0 caused cublasLt64_12.dll mismatch on CUDA 12.x hosts
+onnxruntime-gpu==1.23.2
+numpy>=1.26.0
+opencv-python-headless>=4.9.0
+pillow>=10.2.0
+pydantic>=2.6.0
+python-multipart>=0.0.6
+# v2.0 additions
+ultralytics>=8.3.0
+shapely>=2.0.0
+# Re-ID: OSNet-AIN body re-identification (ONNX export preferred for CUDA EP)
+# torchreid is NOT used at runtime — Re-ID uses ONNX or heuristic fallback.
+# Only needed if you want to export osnet_ain_x1_0.onnx from scratch.
+# torchreid>=0.2.5
