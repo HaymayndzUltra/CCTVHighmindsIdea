@@ -438,16 +438,18 @@ export default function ZoneEditor({ onBack }: ZoneEditorProps) {
           <div className="flex h-full items-center justify-center">
             {/* Camera preview placeholder + drawing overlay */}
             <div className="relative aspect-video w-full max-w-4xl bg-neutral-900 rounded-lg overflow-hidden">
-              {/* Live camera feed via WebRTC */}
-              {selectedCameraId && webrtcStatus === 'connected' ? (
+              {/* Keep video element mounted so ontrack can always attach MediaStream */}
+              {selectedCameraId && (
                 <video
                   ref={webrtcVideoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="absolute inset-0 h-full w-full object-contain"
+                  className={`absolute inset-0 h-full w-full object-contain ${webrtcStatus === 'connected' ? 'block' : 'hidden'}`}
                 />
-              ) : (
+              )}
+
+              {(!selectedCameraId || webrtcStatus !== 'connected') && (
                 <div className="absolute inset-0 flex items-center justify-center text-neutral-600 text-sm">
                   <div className="text-center">
                     <Hexagon size={48} className="mx-auto mb-2 text-neutral-700" />
