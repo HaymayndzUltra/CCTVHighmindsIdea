@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Volume2, Save, Loader2 } from 'lucide-react';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface SoundSettings {
   enabled: boolean;
@@ -33,8 +34,12 @@ const SOUND_CLASSES = [
   { key: 'hornEnabled' as const, label: 'Horn/Honking', severity: 'low' },
 ];
 
+const TAB_ID = 'sound';
+
 export default function SoundDetectionConfig() {
-  const [settings, setSettings] = useState<SoundSettings>(DEFAULT_SETTINGS);
+  const { draftSettings, updateDraftBulk, initDraftBulk, saveDraft } = useSettings();
+  const settings = (draftSettings[TAB_ID] as SoundSettings) || DEFAULT_SETTINGS;
+
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -60,42 +65,42 @@ export default function SoundDetectionConfig() {
       window.electronAPI.settings.get('sound_cooldown_sec'),
       window.electronAPI.settings.get('sound_alert_on_detection'),
     ])).then(([enabled, threshold, events, cooldown, alertOn]) => {
-      setSettings((s) => {
-        const next = { ...s };
-        if (enabled != null) next.enabled = String(enabled) !== 'false';
-        if (threshold != null) next.confidenceThreshold = parseFloat(String(threshold)) || 0.3;
-        if (cooldown != null) next.cooldownSec = parseInt(String(cooldown), 10) || 30;
-        if (alertOn != null) next.alertOnDetection = String(alertOn) !== 'false';
-        if (events != null) {
-          const activeClasses = String(events).split(',').map((c) => c.trim()).filter(Boolean);
-          next.glassBreakEnabled = activeClasses.includes('glass_break');
-          next.gunshotEnabled = activeClasses.includes('gunshot');
-          next.screamEnabled = activeClasses.includes('scream');
-          next.dogBarkEnabled = activeClasses.includes('dog_bark');
-          next.hornEnabled = activeClasses.includes('horn');
-        }
-        return next;
-      });
+      const next = { ...DEFAULT_SETTINGS };
+      if (enabled != null) next.enabled = String(enabled) !== 'false';
+      if (threshold != null) next.confidenceThreshold = parseFloat(String(threshold)) || 0.3;
+      if (cooldown != null) next.cooldownSec = parseInt(String(cooldown), 10) || 30;
+      if (alertOn != null) next.alertOnDetection = String(alertOn) !== 'false';
+      if (events != null) {
+        const activeClasses = String(events).split(',').map((c) => c.trim()).filter(Boolean);
+        next.glassBreakEnabled = activeClasses.includes('glass_break');
+        next.gunshotEnabled = activeClasses.includes('gunshot');
+        next.screamEnabled = activeClasses.includes('scream');
+        next.dogBarkEnabled = activeClasses.includes('dog_bark');
+        next.hornEnabled = activeClasses.includes('horn');
+      }
+      initDraftBulk(TAB_ID, next);
     }).catch(() => {});
-  }, []);
+  }, [initDraftBulk]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     setStatusMessage(null);
     try {
-      if (window.electronAPI?.settings?.set) {
-        await window.electronAPI.settings.set('sound_detection_enabled', String(settings.enabled));
-        await window.electronAPI.settings.set('sound_confidence_threshold', String(settings.confidenceThreshold));
-        const enabledClasses: string[] = [];
-        if (settings.glassBreakEnabled) enabledClasses.push('glass_break');
-        if (settings.gunshotEnabled) enabledClasses.push('gunshot');
-        if (settings.screamEnabled) enabledClasses.push('scream');
-        if (settings.dogBarkEnabled) enabledClasses.push('dog_bark');
-        if (settings.hornEnabled) enabledClasses.push('horn');
-        await window.electronAPI.settings.set('sound_events', enabledClasses.join(','));
-        await window.electronAPI.settings.set('sound_cooldown_sec', String(settings.cooldownSec));
-        await window.electronAPI.settings.set('sound_alert_on_detection', String(settings.alertOnDetection));
-      }
+      await saveDraft(TAB_ID, async () => {
+        if (window.electronAPI?.settings?.set) {
+          await window.electronAPI.settings.set('sound_detection_enabled', String(settings.enabled));
+          await window.electronAPI.settings.set('sound_confidence_threshold', String(settings.confidenceThreshold));
+          const enabledClasses: string[] = [];
+          if (settings.glassBreakEnabled) enabledClasses.push('glass_break');
+          if (settings.gunshotEnabled) enabledClasses.push('gunshot');
+          if (settings.screamEnabled) enabledClasses.push('scream');
+          if (settings.dogBarkEnabled) enabledClasses.push('dog_bark');
+          if (settings.hornEnabled) enabledClasses.push('horn');
+          await window.electronAPI.settings.set('sound_events', enabledClasses.join(','));
+          await window.electronAPI.settings.set('sound_cooldown_sec', String(settings.cooldownSec));
+          await window.electronAPI.settings.set('sound_alert_on_detection', String(settings.alertOnDetection));
+        }
+      });
       setStatusMessage({ type: 'success', text: 'Sound detection settings saved.' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -103,7 +108,7 @@ export default function SoundDetectionConfig() {
     } finally {
       setIsSaving(false);
     }
-  }, [settings]);
+  }, [saveDraft, settings]);
 
   return (
     <div className="space-y-6">
@@ -116,7 +121,7 @@ export default function SoundDetectionConfig() {
         <input
           type="checkbox"
           checked={settings.enabled}
-          onChange={(e) => setSettings((s) => ({ ...s, enabled: e.target.checked }))}
+          onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, enabled: e.target.checked })}
           className="rounded border-neutral-600"
         />
         Enable sound detection (YAMNet)
@@ -131,7 +136,7 @@ export default function SoundDetectionConfig() {
             max={0.9}
             step={0.05}
             value={settings.confidenceThreshold}
-            onChange={(e) => setSettings((s) => ({ ...s, confidenceThreshold: parseFloat(e.target.value) || 0.3 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, confidenceThreshold: parseFloat(e.target.value) || 0.3 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -144,7 +149,7 @@ export default function SoundDetectionConfig() {
             max={300}
             step={5}
             value={settings.cooldownSec}
-            onChange={(e) => setSettings((s) => ({ ...s, cooldownSec: parseInt(e.target.value) || 30 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, cooldownSec: parseInt(e.target.value) || 30 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -158,7 +163,7 @@ export default function SoundDetectionConfig() {
               <input
                 type="checkbox"
                 checked={settings[key]}
-                onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.checked }))}
+                onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, [key]: e.target.checked })}
                 className="rounded border-neutral-600"
               />
               {label}
@@ -178,7 +183,7 @@ export default function SoundDetectionConfig() {
         <input
           type="checkbox"
           checked={settings.alertOnDetection}
-          onChange={(e) => setSettings((s) => ({ ...s, alertOnDetection: e.target.checked }))}
+          onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, alertOnDetection: e.target.checked })}
           className="rounded border-neutral-600"
         />
         Send Telegram alert on sound detection
@@ -188,6 +193,7 @@ export default function SoundDetectionConfig() {
         <button
           onClick={handleSave}
           disabled={isSaving}
+          data-settings-save="sound"
           className="flex items-center gap-1.5 rounded bg-primary-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-500 disabled:opacity-50"
         >
           {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}

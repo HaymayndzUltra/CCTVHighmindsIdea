@@ -1,10 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Save, Send, Loader2, MessageSquare, Eye, EyeOff } from 'lucide-react';
+import { useSettings } from '../../contexts/SettingsContext';
+
+const TAB_ID = 'telegram';
+
+interface TelegramSettings {
+  botToken: string;
+  chatId: string;
+  isEnabled: boolean;
+}
+
+const DEFAULT_SETTINGS: TelegramSettings = {
+  botToken: '',
+  chatId: '',
+  isEnabled: false,
+};
 
 export default function TelegramConfig() {
-  const [botToken, setBotToken] = useState('');
-  const [chatId, setChatId] = useState('');
-  const [isEnabled, setIsEnabled] = useState(false);
+  const { draftSettings, initDraftBulk, updateDraft, saveDraft } = useSettings();
+  const settings = (draftSettings[TAB_ID] as TelegramSettings) || DEFAULT_SETTINGS;
+
   const [showToken, setShowToken] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -13,12 +28,7 @@ export default function TelegramConfig() {
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Stored values for change detection
-  const [storedToken, setStoredToken] = useState('');
-  const [storedChatId, setStoredChatId] = useState('');
-  const [storedEnabled, setStoredEnabled] = useState(false);
-
-  const loadSettings = useCallback(async () => {
+  const loadTabSettings = useCallback(async () => {
     try {
       if (!window.electronAPI?.settings?.get) return;
 
@@ -28,29 +38,21 @@ export default function TelegramConfig() {
         window.electronAPI.settings.get('telegram_enabled'),
       ]);
 
-      const t = tokenRes?.value ?? '';
-      const c = chatIdRes?.value ?? '';
-      const e = enabledRes?.value === 'true';
-
-      setBotToken(t);
-      setChatId(c);
-      setIsEnabled(e);
-      setStoredToken(t);
-      setStoredChatId(c);
-      setStoredEnabled(e);
+      initDraftBulk(TAB_ID, {
+        botToken: String(tokenRes || ''),
+        chatId: String(chatIdRes || ''),
+        isEnabled: String(enabledRes) === 'true',
+      });
     } catch (error) {
       console.error('[TelegramConfig] Failed to load settings:', error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [initDraftBulk]);
 
   useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
-
-  const hasChanges =
-    botToken !== storedToken || chatId !== storedChatId || isEnabled !== storedEnabled;
+    loadTabSettings();
+  }, [loadTabSettings]);
 
   const handleSave = async () => {
     if (!window.electronAPI?.settings?.set) return;
@@ -59,15 +61,13 @@ export default function TelegramConfig() {
     setStatusMessage(null);
 
     try {
-      await Promise.all([
-        window.electronAPI.settings.set('telegram_bot_token', botToken),
-        window.electronAPI.settings.set('telegram_chat_id', chatId),
-        window.electronAPI.settings.set('telegram_enabled', String(isEnabled)),
-      ]);
-
-      setStoredToken(botToken);
-      setStoredChatId(chatId);
-      setStoredEnabled(isEnabled);
+      await saveDraft(TAB_ID, async () => {
+        await Promise.all([
+          window.electronAPI.settings.set('telegram_bot_token', settings.botToken),
+          window.electronAPI.settings.set('telegram_chat_id', settings.chatId),
+          window.electronAPI.settings.set('telegram_enabled', String(settings.isEnabled)),
+        ]);
+      });
       setStatusMessage({ type: 'success', text: 'Settings saved. Telegram service reinitialized.' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -79,7 +79,7 @@ export default function TelegramConfig() {
   };
 
   const handleTest = async () => {
-    if (!botToken || !chatId) {
+    if (!settings.botToken || !settings.chatId) {
       setTestResult({ type: 'error', text: 'Bot Token and Chat ID are required to send a test.' });
       return;
     }
@@ -90,7 +90,7 @@ export default function TelegramConfig() {
     setTestResult(null);
 
     try {
-      const result = await window.electronAPI.telegram.test(botToken, chatId);
+      const result = await window.electronAPI.telegram.test(settings.botToken, settings.chatId);
       if (result.success) {
         setTestResult({ type: 'success', text: result.message });
       } else {
@@ -122,7 +122,6 @@ export default function TelegramConfig() {
       </div>
 
       <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 space-y-4">
-        {/* Global Enable/Disable Toggle */}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-neutral-200">Enable Telegram Alerts</p>
@@ -131,29 +130,28 @@ export default function TelegramConfig() {
             </p>
           </div>
           <button
-            onClick={() => setIsEnabled(!isEnabled)}
+            onClick={() => updateDraft(TAB_ID, 'isEnabled', !settings.isEnabled)}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              isEnabled ? 'bg-primary-600' : 'bg-neutral-700'
+              settings.isEnabled ? 'bg-primary-600' : 'bg-neutral-700'
             }`}
             role="switch"
-            aria-checked={isEnabled}
+            aria-checked={settings.isEnabled}
           >
             <span
               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                isEnabled ? 'translate-x-6' : 'translate-x-1'
+                settings.isEnabled ? 'translate-x-6' : 'translate-x-1'
               }`}
             />
           </button>
         </div>
 
-        {/* Bot Token */}
         <div>
           <label className="mb-1 block text-xs text-neutral-500">Bot Token</label>
           <div className="relative">
             <input
               type={showToken ? 'text' : 'password'}
-              value={botToken}
-              onChange={(e) => setBotToken(e.target.value)}
+              value={settings.botToken}
+              onChange={(e) => updateDraft(TAB_ID, 'botToken', e.target.value)}
               placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
               className="w-full rounded bg-neutral-800 px-2.5 py-1.5 pr-9 text-sm font-mono text-neutral-200 outline-none placeholder:text-neutral-600 focus:ring-1 focus:ring-primary-500"
             />
@@ -167,19 +165,17 @@ export default function TelegramConfig() {
           </div>
         </div>
 
-        {/* Chat ID */}
         <div>
           <label className="mb-1 block text-xs text-neutral-500">Chat ID</label>
           <input
             type="text"
-            value={chatId}
-            onChange={(e) => setChatId(e.target.value)}
+            value={settings.chatId}
+            onChange={(e) => updateDraft(TAB_ID, 'chatId', e.target.value)}
             placeholder="-1001234567890"
             className="w-full rounded bg-neutral-800 px-2.5 py-1.5 text-sm font-mono text-neutral-200 outline-none placeholder:text-neutral-600 focus:ring-1 focus:ring-primary-500"
           />
         </div>
 
-        {/* Test Result */}
         {testResult && (
           <div
             className={`rounded px-3 py-2 text-xs ${
@@ -192,7 +188,6 @@ export default function TelegramConfig() {
           </div>
         )}
 
-        {/* Status Message */}
         {statusMessage && (
           <div
             className={`rounded px-3 py-2 text-xs ${
@@ -205,11 +200,10 @@ export default function TelegramConfig() {
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex items-center justify-between pt-1">
           <button
             onClick={handleTest}
-            disabled={isTesting || !botToken || !chatId}
+            disabled={isTesting || !settings.botToken || !settings.chatId}
             className="flex items-center gap-1.5 rounded border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isTesting ? (
@@ -222,7 +216,8 @@ export default function TelegramConfig() {
 
           <button
             onClick={handleSave}
-            disabled={!hasChanges || isSaving}
+            disabled={isSaving}
+            data-settings-save="telegram"
             className="flex items-center gap-1.5 rounded bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isSaving ? (
