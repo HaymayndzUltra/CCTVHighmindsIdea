@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Brain, Save, Loader2, Activity } from 'lucide-react';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface AISettings {
   detectionConfidence: number;
@@ -23,8 +24,12 @@ const DEFAULT_SETTINGS: AISettings = {
   inferenceDevice: 'cuda',
 };
 
+const TAB_ID = 'ai';
+
 export default function AIConfig() {
-  const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
+  const { draftSettings, loadSettings, updateDraftBulk, saveDraft } = useSettings();
+  const settings = (draftSettings[TAB_ID] as AISettings) || DEFAULT_SETTINGS;
+  
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [healthStatus, setHealthStatus] = useState<{ aiStatus: string; gpuEnabled: boolean } | null>(null);
@@ -78,23 +83,21 @@ export default function AIConfig() {
         )
       );
     }).then((entries) => {
-      setSettings((prev) => {
-        const next = { ...prev };
-        for (const [key, val] of entries) {
-          if (val == null) continue;
-          const strVal = String(val);
-          if (key === 'inferenceDevice') {
-            (next as Record<string, unknown>)[key] = strVal === 'true' ? 'cuda' : 'cpu';
-          } else if (typeof prev[key] === 'number') {
-            (next as Record<string, unknown>)[key] = parseFloat(strVal) || prev[key];
-          } else if (typeof prev[key] === 'boolean') {
-            (next as Record<string, unknown>)[key] = strVal === 'true';
-          } else {
-            (next as Record<string, unknown>)[key] = strVal;
-          }
+      const next = { ...DEFAULT_SETTINGS };
+      for (const [key, val] of entries) {
+        if (val == null) continue;
+        const strVal = String(val);
+        if (key === 'inferenceDevice') {
+          (next as Record<string, unknown>)[key] = strVal === 'true' ? 'cuda' : 'cpu';
+        } else if (typeof DEFAULT_SETTINGS[key] === 'number') {
+          (next as Record<string, unknown>)[key] = parseFloat(strVal) || DEFAULT_SETTINGS[key];
+        } else if (typeof DEFAULT_SETTINGS[key] === 'boolean') {
+          (next as Record<string, unknown>)[key] = strVal === 'true';
+        } else {
+          (next as Record<string, unknown>)[key] = strVal;
         }
-        return next;
-      });
+      }
+      updateDraftBulk(TAB_ID, next);
     }).catch(() => { /* use defaults */ });
     loadHealth();
   }, [loadHealth]);
@@ -103,16 +106,18 @@ export default function AIConfig() {
     setIsSaving(true);
     setStatusMessage(null);
     try {
-      if (window.electronAPI?.settings?.set) {
-        await window.electronAPI.settings.set('yolo_confidence', String(settings.detectionConfidence));
-        await window.electronAPI.settings.set('recognition_threshold', String(settings.faceConfidence));
-        await window.electronAPI.settings.set('reid_enabled', String(settings.reidEnabled));
-        await window.electronAPI.settings.set('reid_face_weight', String(settings.reidThreshold));
-        await window.electronAPI.settings.set('gait_enabled', String(settings.gaitEnabled));
-        await window.electronAPI.settings.set('liveness_enabled', String(settings.livenessEnabled));
-        await window.electronAPI.settings.set('max_concurrent_inference', String(settings.maxConcurrentInference));
-        await window.electronAPI.settings.set('gpu_enabled', settings.inferenceDevice === 'cuda' ? 'true' : 'false');
-      }
+      await saveDraft(TAB_ID, async () => {
+        if (window.electronAPI?.settings?.set) {
+          await window.electronAPI.settings.set('yolo_confidence', String(settings.detectionConfidence));
+          await window.electronAPI.settings.set('recognition_threshold', String(settings.faceConfidence));
+          await window.electronAPI.settings.set('reid_enabled', String(settings.reidEnabled));
+          await window.electronAPI.settings.set('reid_face_weight', String(settings.reidThreshold));
+          await window.electronAPI.settings.set('gait_enabled', String(settings.gaitEnabled));
+          await window.electronAPI.settings.set('liveness_enabled', String(settings.livenessEnabled));
+          await window.electronAPI.settings.set('max_concurrent_inference', String(settings.maxConcurrentInference));
+          await window.electronAPI.settings.set('gpu_enabled', settings.inferenceDevice === 'cuda' ? 'true' : 'false');
+        }
+      });
       setStatusMessage({ type: 'success', text: 'AI settings saved.' });
       loadHealth();
     } catch (err) {
@@ -121,7 +126,7 @@ export default function AIConfig() {
     } finally {
       setIsSaving(false);
     }
-  }, [settings, loadHealth]);
+  }, [settings, loadHealth, saveDraft]);
 
   return (
     <div className="space-y-6">
@@ -152,7 +157,7 @@ export default function AIConfig() {
             max={1.0}
             step={0.05}
             value={settings.detectionConfidence}
-            onChange={(e) => setSettings((s) => ({ ...s, detectionConfidence: parseFloat(e.target.value) || 0.5 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, detectionConfidence: parseFloat(e.target.value) || 0.5 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -165,7 +170,7 @@ export default function AIConfig() {
             max={1.0}
             step={0.05}
             value={settings.faceConfidence}
-            onChange={(e) => setSettings((s) => ({ ...s, faceConfidence: parseFloat(e.target.value) || 0.6 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, faceConfidence: parseFloat(e.target.value) || 0.6 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -178,7 +183,7 @@ export default function AIConfig() {
             max={1.0}
             step={0.05}
             value={settings.reidThreshold}
-            onChange={(e) => setSettings((s) => ({ ...s, reidThreshold: parseFloat(e.target.value) || 0.7 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, reidThreshold: parseFloat(e.target.value) || 0.7 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -191,7 +196,7 @@ export default function AIConfig() {
             max={8}
             step={1}
             value={settings.maxConcurrentInference}
-            onChange={(e) => setSettings((s) => ({ ...s, maxConcurrentInference: parseInt(e.target.value) || 4 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, maxConcurrentInference: parseInt(e.target.value) || 4 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -200,7 +205,7 @@ export default function AIConfig() {
           <label className="mb-1 block text-xs font-medium text-neutral-400">Inference Device</label>
           <select
             value={settings.inferenceDevice}
-            onChange={(e) => setSettings((s) => ({ ...s, inferenceDevice: e.target.value }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, inferenceDevice: e.target.value })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           >
             <option value="cuda">CUDA (GPU)</option>
@@ -214,7 +219,7 @@ export default function AIConfig() {
           <input
             type="checkbox"
             checked={settings.reidEnabled}
-            onChange={(e) => setSettings((s) => ({ ...s, reidEnabled: e.target.checked }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, reidEnabled: e.target.checked })}
             className="rounded border-neutral-600"
           />
           Enable Cross-Camera Re-ID
@@ -223,7 +228,7 @@ export default function AIConfig() {
           <input
             type="checkbox"
             checked={settings.gaitEnabled}
-            onChange={(e) => setSettings((s) => ({ ...s, gaitEnabled: e.target.checked }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, gaitEnabled: e.target.checked })}
             className="rounded border-neutral-600"
           />
           Enable Gait Recognition
@@ -232,7 +237,7 @@ export default function AIConfig() {
           <input
             type="checkbox"
             checked={settings.livenessEnabled}
-            onChange={(e) => setSettings((s) => ({ ...s, livenessEnabled: e.target.checked }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, livenessEnabled: e.target.checked })}
             className="rounded border-neutral-600"
           />
           Enable Liveness Detection
@@ -243,6 +248,7 @@ export default function AIConfig() {
         <button
           onClick={handleSave}
           disabled={isSaving}
+          data-settings-save="ai"
           className="flex items-center gap-1.5 rounded bg-primary-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-500 disabled:opacity-50"
         >
           {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}

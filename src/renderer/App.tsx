@@ -32,10 +32,8 @@ export default function App() {
     setFullscreenCamera(null);
   }, []);
 
-  const renderScreen = () => {
+  const renderOtherScreen = () => {
     switch (activeScreen) {
-      case 'dashboard':
-        return <Dashboard onOpenFullscreen={handleOpenFullscreen} />;
       case 'event-log':
         return <EventLog />;
       case 'person-directory':
@@ -51,7 +49,7 @@ export default function App() {
       case 'settings':
         return <Settings />;
       default:
-        return <Dashboard />;
+        return null;
     }
   };
 
@@ -70,7 +68,18 @@ export default function App() {
   return (
     <div className="flex h-full bg-neutral-950 text-neutral-100">
       <Sidebar activeScreen={activeScreen} onNavigate={setActiveScreen} />
-      <main className="flex-1 overflow-auto">{renderScreen()}</main>
+      <main className="flex-1 overflow-hidden relative">
+        {/* Dashboard always mounted to keep WebRTC streams alive across navigation */}
+        <div className={`h-full ${activeScreen === 'dashboard' ? '' : 'hidden'}`}>
+          <Dashboard onOpenFullscreen={handleOpenFullscreen} />
+        </div>
+        {/* Other screens mount/unmount normally */}
+        {activeScreen !== 'dashboard' && (
+          <div className="h-full overflow-auto">
+            {renderOtherScreen()}
+          </div>
+        )}
+      </main>
     </div>
   );
 }

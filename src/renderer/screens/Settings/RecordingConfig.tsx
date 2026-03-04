@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { HardDrive, Save, Loader2 } from 'lucide-react';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface RecordingSettings {
   defaultMode: 'off' | 'continuous' | 'event_triggered';
@@ -23,8 +24,12 @@ const DEFAULT_SETTINGS: RecordingSettings = {
   outputFormat: 'mp4',
 };
 
+const TAB_ID = 'recording';
+
 export default function RecordingConfig() {
-  const [settings, setSettings] = useState<RecordingSettings>(DEFAULT_SETTINGS);
+  const { draftSettings, updateDraftBulk, saveDraft } = useSettings();
+  const settings = (draftSettings[TAB_ID] as RecordingSettings) || DEFAULT_SETTINGS;
+  
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -56,8 +61,8 @@ export default function RecordingConfig() {
       window.electronAPI.settings.get('recording_max_storage_gb'),
       window.electronAPI.settings.get('recording_output_format'),
     ])).then(([mode, segMin, retDays, storagePath, pre, post, maxGb, fmt]) => {
-      setSettings((s) => ({
-        ...s,
+      const next = {
+        ...DEFAULT_SETTINGS,
         ...(mode != null && { defaultMode: String(mode) as RecordingSettings['defaultMode'] }),
         ...(segMin != null && { segmentDurationSec: Number(segMin) * 60 }),
         ...(retDays != null && { retentionDays: Number(retDays) }),
@@ -66,7 +71,8 @@ export default function RecordingConfig() {
         ...(post != null && { postRecordSec: Number(post) }),
         ...(maxGb != null && { maxStorageGb: Number(maxGb) }),
         ...(fmt != null && { outputFormat: String(fmt) as RecordingSettings['outputFormat'] }),
-      }));
+      };
+      updateDraftBulk(TAB_ID, next);
     }).catch(() => {});
   }, []);
 
@@ -74,16 +80,18 @@ export default function RecordingConfig() {
     setIsSaving(true);
     setStatusMessage(null);
     try {
-      if (window.electronAPI?.settings?.set) {
-        await window.electronAPI.settings.set('recording_mode', settings.defaultMode);
-        await window.electronAPI.settings.set('recording_segment_duration_min', String(Math.round(settings.segmentDurationSec / 60)));
-        await window.electronAPI.settings.set('recording_retention_days', String(settings.retentionDays));
-        await window.electronAPI.settings.set('recording_storage_path', settings.storagePath);
-        await window.electronAPI.settings.set('recording_pre_record_sec', String(settings.preRecordSec));
-        await window.electronAPI.settings.set('recording_post_record_sec', String(settings.postRecordSec));
-        await window.electronAPI.settings.set('recording_max_storage_gb', String(settings.maxStorageGb));
-        await window.electronAPI.settings.set('recording_output_format', settings.outputFormat);
-      }
+      await saveDraft(TAB_ID, async () => {
+        if (window.electronAPI?.settings?.set) {
+          await window.electronAPI.settings.set('recording_mode', settings.defaultMode);
+          await window.electronAPI.settings.set('recording_segment_duration_min', String(Math.round(settings.segmentDurationSec / 60)));
+          await window.electronAPI.settings.set('recording_retention_days', String(settings.retentionDays));
+          await window.electronAPI.settings.set('recording_storage_path', settings.storagePath);
+          await window.electronAPI.settings.set('recording_pre_record_sec', String(settings.preRecordSec));
+          await window.electronAPI.settings.set('recording_post_record_sec', String(settings.postRecordSec));
+          await window.electronAPI.settings.set('recording_max_storage_gb', String(settings.maxStorageGb));
+          await window.electronAPI.settings.set('recording_output_format', settings.outputFormat);
+        }
+      });
       setStatusMessage({ type: 'success', text: 'Recording settings saved.' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -91,7 +99,7 @@ export default function RecordingConfig() {
     } finally {
       setIsSaving(false);
     }
-  }, [settings]);
+  }, [settings, saveDraft]);
 
   return (
     <div className="space-y-6">
@@ -105,7 +113,7 @@ export default function RecordingConfig() {
           <label className="mb-1 block text-xs font-medium text-neutral-400">Default Recording Mode</label>
           <select
             value={settings.defaultMode}
-            onChange={(e) => setSettings((s) => ({ ...s, defaultMode: e.target.value as RecordingSettings['defaultMode'] }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, defaultMode: e.target.value as RecordingSettings['defaultMode'] })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           >
             <option value="off">Off</option>
@@ -122,7 +130,7 @@ export default function RecordingConfig() {
             max={3600}
             step={60}
             value={settings.segmentDurationSec}
-            onChange={(e) => setSettings((s) => ({ ...s, segmentDurationSec: parseInt(e.target.value) || 300 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, segmentDurationSec: parseInt(e.target.value) || 300 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -135,7 +143,7 @@ export default function RecordingConfig() {
             max={365}
             step={1}
             value={settings.retentionDays}
-            onChange={(e) => setSettings((s) => ({ ...s, retentionDays: parseInt(e.target.value) || 30 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, retentionDays: parseInt(e.target.value) || 30 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -148,7 +156,7 @@ export default function RecordingConfig() {
             max={30}
             step={1}
             value={settings.preRecordSec}
-            onChange={(e) => setSettings((s) => ({ ...s, preRecordSec: parseInt(e.target.value) || 5 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, preRecordSec: parseInt(e.target.value) || 5 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -161,7 +169,7 @@ export default function RecordingConfig() {
             max={60}
             step={1}
             value={settings.postRecordSec}
-            onChange={(e) => setSettings((s) => ({ ...s, postRecordSec: parseInt(e.target.value) || 10 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, postRecordSec: parseInt(e.target.value) || 10 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -174,7 +182,7 @@ export default function RecordingConfig() {
             max={10000}
             step={10}
             value={settings.maxStorageGb}
-            onChange={(e) => setSettings((s) => ({ ...s, maxStorageGb: parseInt(e.target.value) || 100 }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, maxStorageGb: parseInt(e.target.value) || 100 })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -183,7 +191,7 @@ export default function RecordingConfig() {
           <label className="mb-1 block text-xs font-medium text-neutral-400">Output Format <span className="text-neutral-600">(planned)</span></label>
           <select
             value={settings.outputFormat}
-            onChange={(e) => setSettings((s) => ({ ...s, outputFormat: e.target.value as RecordingSettings['outputFormat'] }))}
+            onChange={(e) => updateDraftBulk(TAB_ID, { ...settings, outputFormat: e.target.value as RecordingSettings['outputFormat'] })}
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 focus:border-primary-500 focus:outline-none"
           >
             <option value="mp4">MP4</option>
@@ -196,6 +204,7 @@ export default function RecordingConfig() {
         <button
           onClick={handleSave}
           disabled={isSaving}
+          data-settings-save="recording"
           className="flex items-center gap-1.5 rounded bg-primary-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-500 disabled:opacity-50"
         >
           {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
