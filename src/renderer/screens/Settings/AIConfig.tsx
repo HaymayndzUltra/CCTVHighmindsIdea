@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: AISettings = {
 const TAB_ID = 'ai';
 
 export default function AIConfig() {
-  const { draftSettings, loadSettings, updateDraftBulk, saveDraft } = useSettings();
+  const { draftSettings, loadSettings, updateDraftBulk, initDraftBulk, saveDraft } = useSettings();
   const settings = (draftSettings[TAB_ID] as AISettings) || DEFAULT_SETTINGS;
   
   const [isSaving, setIsSaving] = useState(false);
@@ -97,10 +97,10 @@ export default function AIConfig() {
           (next as Record<string, unknown>)[key] = strVal;
         }
       }
-      updateDraftBulk(TAB_ID, next);
+      initDraftBulk(TAB_ID, next);
     }).catch(() => { /* use defaults */ });
     loadHealth();
-  }, [loadHealth]);
+  }, [loadHealth, initDraftBulk]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);

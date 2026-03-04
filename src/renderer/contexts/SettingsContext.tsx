@@ -6,6 +6,7 @@ interface SettingsContextValue {
   dirtyTabs: Set<string>;
   updateDraft: (tabId: string, key: string, value: any) => void;
   updateDraftBulk: (tabId: string, updates: Record<string, any>) => void;
+  initDraftBulk: (tabId: string, updates: Record<string, any>) => void;
   saveDraft: (tabId: string, saveCallback: () => Promise<void>) => Promise<void>;
   discardDraft: (tabId: string) => void;
   loadSettings: (tabId: string, keys: string[]) => Promise<Record<string, any>>;
@@ -61,6 +62,17 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       next.add(tabId);
       return next;
     });
+  }, []);
+
+  const initDraftBulk = useCallback((tabId: string, updates: Record<string, any>) => {
+    setDraftSettings((prev) => ({
+      ...prev,
+      [tabId]: { ...(prev[tabId] || {}), ...updates },
+    }));
+    setSavedSettings((prev) => ({
+      ...prev,
+      [tabId]: { ...updates },
+    }));
   }, []);
 
   const saveDraft = useCallback(async (tabId: string, saveCallback: () => Promise<void>) => {
@@ -137,6 +149,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     dirtyTabs,
     updateDraft,
     updateDraftBulk,
+    initDraftBulk,
     saveDraft,
     discardDraft,
     loadSettings,

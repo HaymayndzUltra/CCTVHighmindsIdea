@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS: LLMSettings = {
 const TAB_ID = 'llm';
 
 export default function LLMConfig() {
-  const { draftSettings, loadSettings, updateDraftBulk, saveDraft, markClean } = useSettings();
+  const { draftSettings, loadSettings, updateDraftBulk, initDraftBulk, saveDraft, markClean } = useSettings();
   const settings = (draftSettings[TAB_ID] as LLMSettings) || DEFAULT_SETTINGS;
   
   const [isSaving, setIsSaving] = useState(false);
@@ -62,12 +62,12 @@ export default function LLMConfig() {
         temperature: Number(loaded['ollama.temperature'] || DEFAULT_SETTINGS.temperature),
       };
 
-      updateDraftBulk(TAB_ID, mapped);
+      initDraftBulk(TAB_ID, mapped);
       await fetchOllamaStatus();
     };
 
     loadData();
-  }, [loadSettings, updateDraftBulk, fetchOllamaStatus]);
+  }, [loadSettings, initDraftBulk, fetchOllamaStatus]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);

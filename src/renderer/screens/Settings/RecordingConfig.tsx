@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: RecordingSettings = {
 const TAB_ID = 'recording';
 
 export default function RecordingConfig() {
-  const { draftSettings, updateDraftBulk, saveDraft } = useSettings();
+  const { draftSettings, updateDraftBulk, initDraftBulk, saveDraft } = useSettings();
   const settings = (draftSettings[TAB_ID] as RecordingSettings) || DEFAULT_SETTINGS;
   
   const [isSaving, setIsSaving] = useState(false);
@@ -72,9 +72,9 @@ export default function RecordingConfig() {
         ...(maxGb != null && { maxStorageGb: Number(maxGb) }),
         ...(fmt != null && { outputFormat: String(fmt) as RecordingSettings['outputFormat'] }),
       };
-      updateDraftBulk(TAB_ID, next);
+      initDraftBulk(TAB_ID, next);
     }).catch(() => {});
-  }, []);
+  }, [initDraftBulk]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
